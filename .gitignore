@@ -1,6 +1,10 @@
 data/
 work/
 .env
+.env.*
+.kaggle/
+credentials.json
+token.json
 .venv/
 __pycache__/
 *.pyc
