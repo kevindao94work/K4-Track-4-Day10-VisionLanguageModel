@@ -18,7 +18,7 @@ def validate_splits(root="data"):
     all_ids, sessions, summary = set(), defaultdict(set), {}
     for split in ("train", "val", "test"):
         rows = [json.loads(x) for x in (root / f"splits/{split}.jsonl").read_text().splitlines() if x.strip()]
-        ids, boxes, clipped_boxes = set(), {c: 0 for c in CLASSES}, 0
+        ids, boxes, clipped_boxes, degenerate_boxes = set(), {c: 0 for c in CLASSES}, 0, 0
         for row in rows:
             assert row["image_id"] not in ids and row["image_id"] not in all_ids
             ids.add(row["image_id"]); all_ids.add(row["image_id"])
@@ -30,7 +30,7 @@ def validate_splits(root="data"):
             for obj in row["objects"]:
                 assert obj["label"] in CLASSES
                 xc, yc, w, h = obj["yolo"]
-                assert all(0 <= v <= 1 for v in (xc, yc, w, h)) and w > 0 and h > 0
+                assert all(0 <= v <= 1 for v in (xc, yc, w, h))
                 # The instructor's authentic source includes some boxes whose
                 # normalized center/size values are valid but whose edges pass
                 # the image boundary. Preserve the source labels; conversion
@@ -39,9 +39,11 @@ def validate_splits(root="data"):
                 x2, y2 = min(1.0, xc+w/2), min(1.0, yc+h/2)
                 assert x2 > x1 and y2 > y1
                 clipped_boxes += int(xc-w/2 < 0 or yc-h/2 < 0 or xc+w/2 > 1 or yc+h/2 > 1)
+                degenerate_boxes += int(w == 0 or h == 0)
                 boxes[obj["label"]] += 1
         summary[split] = {"images": len(rows), "boxes": boxes,
-                          "boxes_clipped_at_image_edge": clipped_boxes}
+                          "boxes_clipped_at_image_edge": clipped_boxes,
+                          "degenerate_boxes": degenerate_boxes}
     assert not (sessions["train"] & sessions["val"] or sessions["train"] & sessions["test"] or sessions["val"] & sessions["test"])
     assert meta["dataset_version"]
     return {"dataset_version": meta["dataset_version"], "counts": summary}
@@ -55,7 +57,10 @@ def encode_example(processor, image, objects):
     user = make_user_message(image)
     prompt = processor.apply_chat_template([user], tokenize=True, add_generation_prompt=True,
                                           return_dict=True, return_tensors="pt")
-    answer = objects_to_answer(objects)
+    # The source contains one zero-area annotation. Preserve it in official
+    # manifests/scoring but omit it from a valid positive-area generation target.
+    usable = [obj for obj in objects if obj["yolo"][2] > 0 and obj["yolo"][3] > 0]
+    answer = objects_to_answer(usable)
     full = processor.apply_chat_template(
         [user, {"role": "assistant", "content": answer}], tokenize=True,
         add_generation_prompt=False, return_dict=True, return_tensors="pt")

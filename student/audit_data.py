@@ -13,7 +13,7 @@ def audit_dataset(data_root="data", out_path="report/evidence/dataset_audit.json
     seen_ids, sessions, result = set(), defaultdict(set), {}
     for split in ("train", "val", "test"):
         rows = [json.loads(s) for s in (root / f"splits/{split}.jsonl").read_text(encoding="utf-8").splitlines() if s.strip()]
-        split_ids, counts, outbounds = set(), {c: 0 for c in CLASSES}, 0
+        split_ids, counts, outbounds, degenerate = set(), {c: 0 for c in CLASSES}, 0, 0
         for row in rows:
             image_id = row["image_id"]
             if image_id in split_ids or image_id in seen_ids:
@@ -32,15 +32,18 @@ def audit_dataset(data_root="data", out_path="report/evidence/dataset_audit.json
                 if obj["label"] not in CLASSES:
                     raise ValueError(f"unknown class for {image_id}: {obj['label']}")
                 xc, yc, w, h = obj["yolo"]
-                if not (0 <= xc <= 1 and 0 <= yc <= 1 and 0 < w <= 1 and 0 < h <= 1):
+                if not (0 <= xc <= 1 and 0 <= yc <= 1 and 0 <= w <= 1 and 0 <= h <= 1):
                     raise ValueError(f"invalid normalized YOLO values for {image_id}")
                 x1, y1, x2, y2 = xc-w/2, yc-h/2, xc+w/2, yc+h/2
-                if max(0, x2)-max(0, x1) <= 0 or max(0, min(1, y2)-max(0, y1)) <= 0:
-                    raise ValueError(f"no positive visible box area for {image_id}")
+                cx1, cy1 = max(0, x1), max(0, y1)
+                cx2, cy2 = min(1, x2), min(1, y2)
+                if cx2 <= cx1 or cy2 <= cy1 or w == 0 or h == 0:
+                    degenerate += 1
                 outbounds += int(x1 < 0 or y1 < 0 or x2 > 1 or y2 > 1)
                 counts[obj["label"]] += 1
         result[split] = {"images": len(rows), "boxes": counts,
-                         "boxes_clipped_at_image_edge": outbounds}
+                         "boxes_clipped_at_image_edge": outbounds,
+                         "degenerate_or_invisible_boxes": degenerate}
     overlaps = {"train_val": len(sessions["train"] & sessions["val"]),
                 "train_test": len(sessions["train"] & sessions["test"]),
                 "val_test": len(sessions["val"] & sessions["test"])}
