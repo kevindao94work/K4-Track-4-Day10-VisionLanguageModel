@@ -1,0 +1,41 @@
+{
+  "dataset_version": "d10-21e4070301",
+  "splits": {
+    "train": {
+      "images": 1422,
+      "boxes": {
+        "pothole": 1074,
+        "crack": 1750,
+        "manhole": 691
+      },
+      "boxes_clipped_at_image_edge": 49,
+      "degenerate_or_invisible_boxes": 1
+    },
+    "val": {
+      "images": 276,
+      "boxes": {
+        "pothole": 66,
+        "crack": 470,
+        "manhole": 103
+      },
+      "boxes_clipped_at_image_edge": 8,
+      "degenerate_or_invisible_boxes": 0
+    },
+    "test": {
+      "images": 311,
+      "boxes": {
+        "pothole": 121,
+        "crack": 299,
+        "manhole": 163
+      },
+      "boxes_clipped_at_image_edge": 6,
+      "degenerate_or_invisible_boxes": 0
+    }
+  },
+  "session_intersections": {
+    "train_val": 0,
+    "train_test": 0,
+    "val_test": 0
+  },
+  "total_unique_images": 2009
+}
