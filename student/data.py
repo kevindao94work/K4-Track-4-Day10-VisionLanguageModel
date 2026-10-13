@@ -18,7 +18,7 @@ def validate_splits(root="data"):
     all_ids, sessions, summary = set(), defaultdict(set), {}
     for split in ("train", "val", "test"):
         rows = [json.loads(x) for x in (root / f"splits/{split}.jsonl").read_text().splitlines() if x.strip()]
-        ids, boxes = set(), {c: 0 for c in CLASSES}
+        ids, boxes, clipped_boxes = set(), {c: 0 for c in CLASSES}, 0
         for row in rows:
             assert row["image_id"] not in ids and row["image_id"] not in all_ids
             ids.add(row["image_id"]); all_ids.add(row["image_id"])
@@ -31,10 +31,17 @@ def validate_splits(root="data"):
                 assert obj["label"] in CLASSES
                 xc, yc, w, h = obj["yolo"]
                 assert all(0 <= v <= 1 for v in (xc, yc, w, h)) and w > 0 and h > 0
-                assert xc-w/2 >= -1e-8 and yc-h/2 >= -1e-8
-                assert xc+w/2 <= 1+1e-8 and yc+h/2 <= 1+1e-8
+                # The instructor's authentic source includes some boxes whose
+                # normalized center/size values are valid but whose edges pass
+                # the image boundary. Preserve the source labels; conversion
+                # clips them to [0, 1000]. Ensure each still has visible area.
+                x1, y1 = max(0.0, xc-w/2), max(0.0, yc-h/2)
+                x2, y2 = min(1.0, xc+w/2), min(1.0, yc+h/2)
+                assert x2 > x1 and y2 > y1
+                clipped_boxes += int(xc-w/2 < 0 or yc-h/2 < 0 or xc+w/2 > 1 or yc+h/2 > 1)
                 boxes[obj["label"]] += 1
-        summary[split] = {"images": len(rows), "boxes": boxes}
+        summary[split] = {"images": len(rows), "boxes": boxes,
+                          "boxes_clipped_at_image_edge": clipped_boxes}
     assert not (sessions["train"] & sessions["val"] or sessions["train"] & sessions["test"] or sessions["val"] & sessions["test"])
     assert meta["dataset_version"]
     return {"dataset_version": meta["dataset_version"], "counts": summary}
